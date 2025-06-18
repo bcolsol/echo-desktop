@@ -1,3 +1,5 @@
+import { DetectedTrade } from "./dex";
+
 export interface WalletLogEvent {
   walletAddress: string;
   signature: string;
@@ -5,6 +7,7 @@ export interface WalletLogEvent {
   err: any;
   logs: string[];
   timestamp: number;
+  detectedTrade?: DetectedTrade;
 }
 
 export interface WalletMonitoringStatus {

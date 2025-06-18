@@ -1,5 +1,11 @@
 import { Connection, PublicKey, Logs, Context } from "@solana/web3.js";
-import { WalletLogEvent, WalletMonitoringStatus, WalletMonitoringError } from "../../src/type/wallet";
+import {
+  WalletLogEvent,
+  WalletMonitoringStatus,
+  WalletMonitoringError,
+} from "../../src/type/wallet";
+import { TransactionAnalyzer } from "./transactionAnalyzer";
+import { serializeDetectedTrade } from "../../src/type/dex";
 
 export class WalletMonitor {
   private connection: Connection | null = null;
@@ -8,6 +14,7 @@ export class WalletMonitor {
   private monitoredWallets: string[] = [];
   private eventCallback: ((event: WalletLogEvent) => void) | null = null;
   private errorCallback: ((error: WalletMonitoringError) => void) | null = null;
+  private transactionAnalyzer: TransactionAnalyzer | null = null;
 
   /**
    * Creates a Solana connection with the specified RPC URL
@@ -17,7 +24,9 @@ export class WalletMonitor {
   createSolanaConnection(rpcUrl: string): Connection {
     return new Connection(rpcUrl, {
       commitment: "confirmed",
-      wsEndpoint: rpcUrl.replace("https://", "wss://").replace("http://", "ws://"),
+      wsEndpoint: rpcUrl
+        .replace("https://", "wss://")
+        .replace("http://", "ws://"),
     });
   }
 
@@ -30,7 +39,7 @@ export class WalletMonitor {
     if (!addressesString || addressesString.trim() === "") {
       return [];
     }
-    
+
     return addressesString
       .split(",")
       .map((addr) => addr.trim())
@@ -57,7 +66,10 @@ export class WalletMonitor {
    * @param address - Wallet address to monitor
    * @returns Subscription ID or null if failed
    */
-  async subscribeToWallet(connection: Connection, address: string): Promise<number | null> {
+  async subscribeToWallet(
+    connection: Connection,
+    address: string
+  ): Promise<number | null> {
     try {
       if (!this.validateWalletAddress(address)) {
         throw new Error(`Invalid wallet address: ${address}`);
@@ -67,12 +79,17 @@ export class WalletMonitor {
       const subscriptionId = connection.onLogs(
         publicKey,
         (logs: Logs, context) => {
-          this.handleLogEvent(address, logs, context);
+          // Handle log event asynchronously to avoid blocking the subscription
+          this.handleLogEvent(address, logs, context).catch((error) => {
+            console.error(`Error in async log handler for ${address}:`, error);
+          });
         },
         "confirmed"
       );
 
-      console.log(`Subscribed to wallet ${address} with subscription ID: ${subscriptionId}`);
+      console.log(
+        `Subscribed to wallet ${address} with subscription ID: ${subscriptionId}`
+      );
       return subscriptionId;
     } catch (error) {
       console.error(`Failed to subscribe to wallet ${address}:`, error);
@@ -91,12 +108,18 @@ export class WalletMonitor {
    * @param connection - Solana connection instance
    * @param subscriptionId - Subscription ID to cancel
    */
-  async unsubscribeFromWallet(connection: Connection, subscriptionId: number): Promise<void> {
+  async unsubscribeFromWallet(
+    connection: Connection,
+    subscriptionId: number
+  ): Promise<void> {
     try {
       await connection.removeOnLogsListener(subscriptionId);
       console.log(`Unsubscribed from subscription ID: ${subscriptionId}`);
     } catch (error) {
-      console.error(`Failed to unsubscribe from subscription ${subscriptionId}:`, error);
+      console.error(
+        `Failed to unsubscribe from subscription ${subscriptionId}:`,
+        error
+      );
     }
   }
 
@@ -106,8 +129,53 @@ export class WalletMonitor {
    * @param logs - Log data from Solana
    * @param context - Context information
    */
-  private handleLogEvent(walletAddress: string, logs: Logs, context: Context): void {
+  private async handleLogEvent(
+    walletAddress: string,
+    logs: Logs,
+    context: Context
+  ): Promise<void> {
     try {
+      // Skip failed transactions unless they're DEX-related
+      if (logs.err && !this.connection) {
+        return;
+      }
+
+      // Fetch the full transaction for analysis
+      if (!this.connection || !this.transactionAnalyzer) {
+        console.warn("Connection or transaction analyzer not available");
+        return;
+      }
+
+      const transaction = await this.connection.getParsedTransaction(
+        logs.signature,
+        {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        }
+      );
+
+      if (!transaction) {
+        console.warn(`Could not fetch transaction: ${logs.signature}`);
+        return;
+      }
+
+      const walletPubKey = new PublicKey(walletAddress);
+      const analysisResult = await this.transactionAnalyzer.analyzeTransaction(
+        transaction,
+        walletPubKey
+      );
+
+      // Only forward DEX transactions to the frontend
+      if (!analysisResult.isDexTransaction) {
+        console.log(`Non-DEX transaction filtered out: ${logs.signature}`);
+        return;
+      }
+
+      // Convert internal trade data to serializable format
+      const serializableTrade = analysisResult.detectedTrade
+        ? serializeDetectedTrade(analysisResult.detectedTrade)
+        : undefined;
+
       const event: WalletLogEvent = {
         walletAddress,
         signature: logs.signature,
@@ -115,12 +183,16 @@ export class WalletMonitor {
         err: logs.err,
         logs: logs.logs,
         timestamp: Date.now(),
+        detectedTrade: serializableTrade,
       };
 
-      console.log(`Log event received for wallet ${walletAddress}:`, {
+      console.log(`DEX transaction detected for wallet ${walletAddress}:`, {
         signature: event.signature,
         logsCount: event.logs.length,
         slot: event.slot,
+        tradeType: event.detectedTrade?.type || "unknown",
+        tokenMint: event.detectedTrade?.tokenMint || "none",
+        detectedTrade: event.detectedTrade,
       });
 
       // Forward event to callback
@@ -170,7 +242,10 @@ export class WalletMonitor {
    * @param rpcUrl - Solana RPC endpoint URL
    * @param walletAddressesString - Comma-separated wallet addresses
    */
-  async startMonitoring(rpcUrl: string, walletAddressesString: string): Promise<void> {
+  async startMonitoring(
+    rpcUrl: string,
+    walletAddressesString: string
+  ): Promise<void> {
     try {
       // Stop any existing monitoring
       if (this.isRunning) {
@@ -185,21 +260,29 @@ export class WalletMonitor {
 
       // Create connection
       this.connection = this.createSolanaConnection(rpcUrl);
-      
+
       // Test connection
       try {
         await this.connection.getVersion();
         console.log("Successfully connected to Solana RPC");
       } catch (error) {
-        throw new Error(`Failed to connect to Solana RPC: ${(error as Error).message}`);
+        throw new Error(
+          `Failed to connect to Solana RPC: ${(error as Error).message}`
+        );
       }
+
+      // Initialize transaction analyzer
+      this.transactionAnalyzer = new TransactionAnalyzer(this.connection);
 
       // Subscribe to each wallet
       this.monitoredWallets = walletAddresses;
       this.subscriptionIds.clear();
 
       for (const address of walletAddresses) {
-        const subscriptionId = await this.subscribeToWallet(this.connection, address);
+        const subscriptionId = await this.subscribeToWallet(
+          this.connection,
+          address
+        );
         if (subscriptionId !== null) {
           this.subscriptionIds.set(address, subscriptionId);
         }
@@ -210,7 +293,9 @@ export class WalletMonitor {
       }
 
       this.isRunning = true;
-      console.log(`Wallet monitoring started for ${this.subscriptionIds.size} wallets`);
+      console.log(
+        `Wallet monitoring started for ${this.subscriptionIds.size} wallets`
+      );
     } catch (error) {
       console.error("Failed to start wallet monitoring:", error);
       this.handleError({
@@ -218,7 +303,7 @@ export class WalletMonitor {
         message: `Failed to start monitoring: ${(error as Error).message}`,
         timestamp: Date.now(),
       });
-      
+
       // Clean up on failure
       await this.stopMonitoring();
       throw error;
@@ -243,6 +328,7 @@ export class WalletMonitor {
       this.subscriptionIds.clear();
       this.monitoredWallets = [];
       this.connection = null;
+      this.transactionAnalyzer = null;
       this.isRunning = false;
 
       console.log("Wallet monitoring stopped");
