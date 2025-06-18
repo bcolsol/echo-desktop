@@ -27,6 +27,7 @@
     "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.98.2",
     "@tabler/icons-react": "^3.34.0",
+    "decimal.js": "^10.5.0",
     "electron-updater": "^6.3.9"
   },
   "devDependencies": {

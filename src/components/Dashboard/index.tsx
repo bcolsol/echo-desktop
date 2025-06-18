@@ -17,10 +17,19 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { IconSettings, IconPlayerPlay, IconPlayerStop, IconActivity } from "@tabler/icons-react";
+import {
+  IconSettings,
+  IconPlayerPlay,
+  IconPlayerStop,
+  IconActivity,
+} from "@tabler/icons-react";
 import ConfigForm from "@/components/configForm";
 import { ConfigData } from "@/type/config";
-import { WalletLogEvent, WalletMonitoringError, WalletMonitoringStatus } from "@/type/wallet";
+import {
+  WalletLogEvent,
+  WalletMonitoringError,
+  WalletMonitoringStatus,
+} from "@/type/wallet";
 
 interface DashboardProps {}
 
@@ -31,10 +40,13 @@ const Dashboard: React.FC<DashboardProps> = () => {
   ] = useDisclosure();
   const [hasValidConfig, setHasValidConfig] = useState<boolean>(false);
   const [isCheckingConfig, setIsCheckingConfig] = useState<boolean>(true);
-  const [monitoringStatus, setMonitoringStatus] = useState<WalletMonitoringStatus | null>(null);
+  const [monitoringStatus, setMonitoringStatus] =
+    useState<WalletMonitoringStatus | null>(null);
   const [walletEvents, setWalletEvents] = useState<WalletLogEvent[]>([]);
-  const [isStartingMonitoring, setIsStartingMonitoring] = useState<boolean>(false);
-  const [isStoppingMonitoring, setIsStoppingMonitoring] = useState<boolean>(false);
+  const [isStartingMonitoring, setIsStartingMonitoring] =
+    useState<boolean>(false);
+  const [isStoppingMonitoring, setIsStoppingMonitoring] =
+    useState<boolean>(false);
 
   const updateMonitoringStatus = useCallback(async (): Promise<void> => {
     try {
@@ -80,26 +92,33 @@ const Dashboard: React.FC<DashboardProps> = () => {
 
   useEffect(() => {
     checkConfigValidity();
-    
-    // Set up wallet event listeners
-    const removeWalletEventListener = window.electronAPI.onWalletLogEvent((event: WalletLogEvent) => {
-      setWalletEvents(prev => [event, ...prev.slice(0, 99)]); // Keep last 100 events
-      notifications.show({
-        title: "Wallet Activity",
-        message: `Transaction detected on ${event.walletAddress.slice(0, 8)}...`,
-        color: "blue",
-        autoClose: 3000,
-      });
-    });
 
-    const removeWalletErrorListener = window.electronAPI.onWalletError((error: WalletMonitoringError) => {
-      notifications.show({
-        title: "Monitoring Error",
-        message: error.message,
-        color: "red",
-        autoClose: 5000,
-      });
-    });
+    // Set up wallet event listeners
+    const removeWalletEventListener = window.electronAPI.onWalletLogEvent(
+      (event: WalletLogEvent) => {
+        setWalletEvents((prev) => [event, ...prev.slice(0, 99)]); // Keep last 100 events
+        notifications.show({
+          title: "Wallet Activity",
+          message: `Transaction detected on ${event.walletAddress.slice(
+            0,
+            8
+          )}...`,
+          color: "blue",
+          autoClose: 3000,
+        });
+      }
+    );
+
+    const removeWalletErrorListener = window.electronAPI.onWalletError(
+      (error: WalletMonitoringError) => {
+        notifications.show({
+          title: "Monitoring Error",
+          message: error.message,
+          color: "red",
+          autoClose: 5000,
+        });
+      }
+    );
 
     // Clean up listeners on unmount
     return () => {
@@ -113,12 +132,17 @@ const Dashboard: React.FC<DashboardProps> = () => {
     if (!isCheckingConfig && !hasValidConfig) {
       openConfigModal();
     }
-    
+
     // Update monitoring status when config validity changes
     if (hasValidConfig) {
       updateMonitoringStatus();
     }
-  }, [isCheckingConfig, hasValidConfig, openConfigModal, updateMonitoringStatus]);
+  }, [
+    isCheckingConfig,
+    hasValidConfig,
+    openConfigModal,
+    updateMonitoringStatus,
+  ]);
 
   const handleStartMonitoring = useCallback(async (): Promise<void> => {
     if (!hasValidConfig) {
@@ -167,7 +191,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
     try {
       setIsStoppingMonitoring(true);
       const result = await window.electronAPI.stopWalletMonitoring();
-      
+
       if (result.success) {
         notifications.show({
           title: "Monitoring Stopped",
@@ -227,7 +251,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
       <AppShell.Header>
         <Group h="100%" px="md">
           <Text size="lg" fw={600}>
-            Echo Desktop - Solana Copy Trading Bot
+            Echo
           </Text>
         </Group>
       </AppShell.Header>
@@ -245,11 +269,11 @@ const Dashboard: React.FC<DashboardProps> = () => {
           >
             Configuration
           </Button>
-          
+
           <Text fw={500} size="sm" c="dimmed" mt="md">
             Monitoring
           </Text>
-          
+
           {hasValidConfig && (
             <>
               {!monitoringStatus?.isRunning ? (
@@ -277,14 +301,16 @@ const Dashboard: React.FC<DashboardProps> = () => {
               )}
             </>
           )}
-          
+
           {monitoringStatus && (
             <Paper p="sm" radius="md" bg="gray.0">
               <Stack gap="xs">
                 <Flex justify="space-between" align="center">
-                  <Text size="xs" fw={500}>Status</Text>
-                  <Badge 
-                    color={monitoringStatus.isRunning ? "green" : "gray"} 
+                  <Text size="xs" fw={500}>
+                    Status
+                  </Text>
+                  <Badge
+                    color={monitoringStatus.isRunning ? "green" : "gray"}
                     size="xs"
                   >
                     {monitoringStatus.isRunning ? "Running" : "Stopped"}
@@ -309,7 +335,9 @@ const Dashboard: React.FC<DashboardProps> = () => {
               </Alert>
             ) : !hasValidConfig ? (
               <Alert color="orange" title="Configuration Required">
-                <Text>Please complete the bot configuration to get started.</Text>
+                <Text>
+                  Please complete the bot configuration to get started.
+                </Text>
                 <Button
                   variant="light"
                   size="sm"
@@ -332,7 +360,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
                         <IconActivity size={20} />
                         <Title order={3}>Wallet Activity</Title>
                       </Group>
-                      <Badge 
+                      <Badge
                         color={walletEvents.length > 0 ? "green" : "gray"}
                         variant="light"
                       >
@@ -342,35 +370,70 @@ const Dashboard: React.FC<DashboardProps> = () => {
 
                     {walletEvents.length === 0 ? (
                       <Text c="dimmed" ta="center" py="xl">
-                        {hasValidConfig && monitoringStatus?.isRunning 
-                          ? "Monitoring for wallet activity..." 
+                        {hasValidConfig && monitoringStatus?.isRunning
+                          ? "Monitoring for wallet activity..."
                           : "No wallet activity yet. Start monitoring to see transactions."}
                       </Text>
                     ) : (
                       <ScrollArea h={400}>
                         <Stack gap="xs">
                           {walletEvents.map((event, index) => (
-                            <Paper key={`${event.signature}-${index}`} p="sm" radius="sm" bg="gray.0">
+                            <Paper
+                              key={`${event.signature}-${index}`}
+                              p="sm"
+                              radius="sm"
+                              bg="gray.0"
+                            >
                               <Group justify="space-between" align="flex-start">
                                 <Stack gap={4} style={{ flex: 1 }}>
                                   <Group gap="xs">
                                     <Text size="sm" fw={500}>
-                                      {event.walletAddress.slice(0, 8)}...{event.walletAddress.slice(-8)}
+                                      {event.walletAddress.slice(0, 8)}...
+                                      {event.walletAddress.slice(-8)}
                                     </Text>
-                                    <Badge 
-                                      size="xs" 
+                                    <Badge
+                                      size="xs"
                                       color={event.err ? "red" : "green"}
                                       variant="light"
                                     >
                                       {event.err ? "Failed" : "Success"}
                                     </Badge>
+                                    {event.detectedTrade && (
+                                      <Badge
+                                        size="xs"
+                                        color={
+                                          event.detectedTrade.type === "buy"
+                                            ? "blue"
+                                            : "orange"
+                                        }
+                                        variant="filled"
+                                      >
+                                        {event.detectedTrade.type.toUpperCase()}
+                                      </Badge>
+                                    )}
                                   </Group>
-                                  <Text size="xs" c="dimmed" style={{ fontFamily: 'monospace' }}>
+                                  <Text
+                                    size="xs"
+                                    c="dimmed"
+                                    style={{ fontFamily: "monospace" }}
+                                  >
                                     {event.signature}
                                   </Text>
                                   <Text size="xs" c="dimmed">
-                                    Slot: {event.slot} • {new Date(event.timestamp).toLocaleTimeString()}
+                                    Slot: {event.slot} •{" "}
+                                    {new Date(
+                                      event.timestamp
+                                    ).toLocaleTimeString()}
                                   </Text>
+                                  {event.detectedTrade && (
+                                    <Text size="xs" c="dimmed">
+                                      Token:{" "}
+                                      {event.detectedTrade.tokenInfo.symbol} •
+                                      Amount: {event.detectedTrade.tokenAmount}{" "}
+                                      •{event.detectedTrade.currencySymbol}:{" "}
+                                      {event.detectedTrade.currencyAmount}
+                                    </Text>
+                                  )}
                                   {event.logs.length > 0 && (
                                     <Text size="xs" c="dimmed">
                                       {event.logs.length} log entries
