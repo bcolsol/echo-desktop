@@ -15,6 +15,8 @@ import {
   validateWalletAddressesString,
 } from "../utils/index";
 import { ConfigData, SaveConfigResponse } from "@/type/config";
+import { walletMonitor } from "../services/walletMonitor";
+import { WalletLogEvent, WalletMonitoringError, WalletEventResponse, StartMonitoringRequest } from "@/type/wallet";
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -226,6 +228,61 @@ ipcMain.handle(
     }
   }
 );
+
+// Wallet monitoring setup
+walletMonitor.setEventCallback((event: WalletLogEvent) => {
+  // Forward wallet events to renderer process
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("wallet:log-event", event);
+  }
+});
+
+walletMonitor.setErrorCallback((error: WalletMonitoringError) => {
+  // Forward wallet errors to renderer process
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("wallet:error", error);
+  }
+});
+
+// Wallet monitoring IPC handlers
+ipcMain.handle("wallet:start-monitoring", async (_, request: StartMonitoringRequest): Promise<WalletEventResponse> => {
+  try {
+    await walletMonitor.startMonitoring(request.rpcEndpointUrl, request.monitoredWalletAddresses);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to start wallet monitoring:", error);
+    return { 
+      success: false, 
+      error: `Failed to start monitoring: ${(error as Error).message}` 
+    };
+  }
+});
+
+ipcMain.handle("wallet:stop-monitoring", async (): Promise<WalletEventResponse> => {
+  try {
+    await walletMonitor.stopMonitoring();
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to stop wallet monitoring:", error);
+    return { 
+      success: false, 
+      error: `Failed to stop monitoring: ${(error as Error).message}` 
+    };
+  }
+});
+
+ipcMain.handle("wallet:get-status", () => {
+  return walletMonitor.getStatus();
+});
+
+// Clean up wallet monitoring on app quit
+app.on("before-quit", async () => {
+  try {
+    await walletMonitor.stopMonitoring();
+  } catch (error) {
+    console.error("Error stopping wallet monitoring on quit:", error);
+  }
+});
 
 // New window example arg: new windows url
 ipcMain.handle("open-win", (_, arg) => {

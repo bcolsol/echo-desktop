@@ -24,6 +24,8 @@
     "@mantine/form": "^8.1.1",
     "@mantine/hooks": "^8.1.1",
     "@mantine/notifications": "^8.1.1",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.2",
     "@tabler/icons-react": "^3.34.0",
     "electron-updater": "^6.3.9"
   },
