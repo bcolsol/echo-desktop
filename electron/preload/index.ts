@@ -1,4 +1,5 @@
 import { ConfigData } from "@/type/config";
+import { StartMonitoringRequest, WalletLogEvent, WalletMonitoringError, WalletMonitoringStatus } from "@/type/wallet";
 import { ipcRenderer, contextBridge } from "electron";
 
 // --------- Expose some API to the Renderer process ---------
@@ -24,9 +25,31 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
 });
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  // Config API
   loadConfig: () => ipcRenderer.invoke("config:load"),
   saveConfig: (configData: ConfigData) =>
     ipcRenderer.invoke("config:save", configData),
+  
+  // Wallet monitoring API
+  startWalletMonitoring: (request: StartMonitoringRequest) =>
+    ipcRenderer.invoke("wallet:start-monitoring", request),
+  stopWalletMonitoring: () =>
+    ipcRenderer.invoke("wallet:stop-monitoring"),
+  getWalletMonitoringStatus: (): Promise<WalletMonitoringStatus> =>
+    ipcRenderer.invoke("wallet:get-status"),
+  
+  // Wallet event listeners
+  onWalletLogEvent: (callback: (event: WalletLogEvent) => void) => {
+    const listener = (_: any, event: WalletLogEvent) => callback(event);
+    ipcRenderer.on("wallet:log-event", listener);
+    return () => ipcRenderer.off("wallet:log-event", listener);
+  },
+  
+  onWalletError: (callback: (error: WalletMonitoringError) => void) => {
+    const listener = (_: any, error: WalletMonitoringError) => callback(error);
+    ipcRenderer.on("wallet:error", listener);
+    return () => ipcRenderer.off("wallet:error", listener);
+  },
 });
 
 // --------- Preload scripts loading ---------
