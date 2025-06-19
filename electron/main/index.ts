@@ -18,6 +18,8 @@ import { ConfigData, SaveConfigResponse } from "@/type/config";
 import { walletMonitor } from "../services/walletMonitor";
 import { WalletLogEvent, WalletMonitoringError, WalletEventResponse, StartMonitoringRequest } from "@/type/wallet";
 import { CopyTradeResult } from "@/type/jupiter";
+import { stateManager } from "../services/stateManager";
+import { BotHoldingResponse, ClearHoldingsResponse } from "@/type/holdings";
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -96,7 +98,17 @@ async function createWindow() {
   update(win);
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  await createWindow();
+  
+  // Initialize holdings state manager
+  try {
+    await stateManager.loadHoldings();
+    console.log("[Main] Holdings state manager initialized");
+  } catch (error) {
+    console.error("[Main] Failed to initialize holdings state manager:", error);
+  }
+});
 
 app.on("window-all-closed", () => {
   win = null;
@@ -294,6 +306,33 @@ ipcMain.handle("wallet:stop-monitoring", async (): Promise<WalletEventResponse> 
 
 ipcMain.handle("wallet:get-status", () => {
   return walletMonitor.getStatus();
+});
+
+// Holdings IPC handlers
+ipcMain.handle("holdings:get-all", async (): Promise<BotHoldingResponse> => {
+  try {
+    const holdings = stateManager.getAllHoldings();
+    return { success: true, holdings };
+  } catch (error) {
+    console.error("Failed to get holdings:", error);
+    return {
+      success: false,
+      error: `Failed to get holdings: ${(error as Error).message}`
+    };
+  }
+});
+
+ipcMain.handle("holdings:clear", async (): Promise<ClearHoldingsResponse> => {
+  try {
+    await stateManager.clearAllHoldings();
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to clear holdings:", error);
+    return {
+      success: false,
+      error: `Failed to clear holdings: ${(error as Error).message}`
+    };
+  }
 });
 
 // Clean up wallet monitoring on app quit
