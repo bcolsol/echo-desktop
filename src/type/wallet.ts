@@ -1,4 +1,5 @@
 import { DetectedTrade } from "./dex";
+import { CopyTradeResult } from "./jupiter";
 
 export interface WalletLogEvent {
   walletAddress: string;
@@ -8,6 +9,7 @@ export interface WalletLogEvent {
   logs: string[];
   timestamp: number;
   detectedTrade?: DetectedTrade;
+  copyTradeResult?: CopyTradeResult;
 }
 
 export interface WalletMonitoringStatus {

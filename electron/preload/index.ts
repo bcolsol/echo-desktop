@@ -1,5 +1,6 @@
 import { ConfigData } from "@/type/config";
 import { StartMonitoringRequest, WalletLogEvent, WalletMonitoringError, WalletMonitoringStatus } from "@/type/wallet";
+import { CopyTradeResult } from "@/type/jupiter";
 import { ipcRenderer, contextBridge } from "electron";
 
 // --------- Expose some API to the Renderer process ---------
@@ -49,6 +50,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     const listener = (_: any, error: WalletMonitoringError) => callback(error);
     ipcRenderer.on("wallet:error", listener);
     return () => ipcRenderer.off("wallet:error", listener);
+  },
+  
+  onCopyTradeResult: (callback: (result: CopyTradeResult) => void) => {
+    const listener = (_: any, result: CopyTradeResult) => callback(result);
+    ipcRenderer.on("copy-trade:result", listener);
+    return () => ipcRenderer.off("copy-trade:result", listener);
   },
 });
 

@@ -17,6 +17,7 @@ import {
 import { ConfigData, SaveConfigResponse } from "@/type/config";
 import { walletMonitor } from "../services/walletMonitor";
 import { WalletLogEvent, WalletMonitoringError, WalletEventResponse, StartMonitoringRequest } from "@/type/wallet";
+import { CopyTradeResult } from "@/type/jupiter";
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -244,10 +245,19 @@ walletMonitor.setErrorCallback((error: WalletMonitoringError) => {
   }
 });
 
+walletMonitor.setCopyTradeCallback((result: CopyTradeResult) => {
+  // Forward copy trade results to renderer process
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("copy-trade:result", result);
+  }
+});
+
 // Wallet monitoring IPC handlers
 ipcMain.handle("wallet:start-monitoring", async (_, request: StartMonitoringRequest): Promise<WalletEventResponse> => {
   try {
-    await walletMonitor.startMonitoring(request.rpcEndpointUrl, request.monitoredWalletAddresses);
+    // Load current config to pass to wallet monitor for copy trading
+    const config = await loadConfigFromFile();
+    await walletMonitor.startMonitoring(request.rpcEndpointUrl, request.monitoredWalletAddresses, config);
     return { success: true };
   } catch (error) {
     console.error("Failed to start wallet monitoring:", error);
@@ -257,6 +267,17 @@ ipcMain.handle("wallet:start-monitoring", async (_, request: StartMonitoringRequ
     };
   }
 });
+
+async function loadConfigFromFile(): Promise<ConfigData | undefined> {
+  try {
+    await fs.access(CONFIG_FILE_PATH);
+    const fileContent = await fs.readFile(CONFIG_FILE_PATH, "utf-8");
+    return JSON.parse(fileContent) as ConfigData;
+  } catch (error) {
+    console.log("No config file found, copy trading will be disabled");
+    return undefined;
+  }
+}
 
 ipcMain.handle("wallet:stop-monitoring", async (): Promise<WalletEventResponse> => {
   try {
