@@ -1,5 +1,6 @@
 import { ConfigData } from "./config";
 import { StartMonitoringRequest, WalletLogEvent, WalletMonitoringError, WalletMonitoringStatus } from "./wallet";
+import { CopyTradeResult } from "./jupiter";
 
 declare global {
   interface Window {
@@ -16,6 +17,7 @@ declare global {
       // Wallet event listeners
       onWalletLogEvent: (callback: (event: WalletLogEvent) => void) => () => void;
       onWalletError: (callback: (error: WalletMonitoringError) => void) => () => void;
+      onCopyTradeResult: (callback: (result: CopyTradeResult) => void) => () => void;
     };
     
     ipcRenderer: {

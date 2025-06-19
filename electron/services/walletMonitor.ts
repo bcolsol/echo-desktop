@@ -6,6 +6,9 @@ import {
 } from "../../src/type/wallet";
 import { TransactionAnalyzer } from "./transactionAnalyzer";
 import { serializeDetectedTrade } from "../../src/type/dex";
+import { CopyTradingEngine } from "./copyTradingEngine";
+import { ConfigData } from "../../src/type/config";
+import { CopyTradeResult } from "../../src/type/jupiter";
 
 export class WalletMonitor {
   private connection: Connection | null = null;
@@ -14,7 +17,10 @@ export class WalletMonitor {
   private monitoredWallets: string[] = [];
   private eventCallback: ((event: WalletLogEvent) => void) | null = null;
   private errorCallback: ((error: WalletMonitoringError) => void) | null = null;
+  private copyTradeCallback: ((result: CopyTradeResult) => void) | null = null;
   private transactionAnalyzer: TransactionAnalyzer | null = null;
+  private copyTradingEngine: CopyTradingEngine | null = null;
+  private config: ConfigData | null = null;
 
   /**
    * Creates a Solana connection with the specified RPC URL
@@ -140,12 +146,11 @@ export class WalletMonitor {
         return;
       }
 
-      // Fetch the full transaction for analysis
       if (!this.connection || !this.transactionAnalyzer) {
         console.warn("Connection or transaction analyzer not available");
         return;
       }
-
+      // Fetch the full transaction for analysis
       const transaction = await this.connection.getParsedTransaction(
         logs.signature,
         {
@@ -195,6 +200,56 @@ export class WalletMonitor {
         detectedTrade: event.detectedTrade,
       });
 
+      // Execute copy trade if conditions are met
+      if (
+        analysisResult.detectedTrade &&
+        this.copyTradingEngine &&
+        this.config
+      ) {
+        console.log(
+          `[CopyTrading] Initiating copy trade for ${analysisResult.detectedTrade.type} of ${analysisResult.detectedTrade.tokenInfo.symbol}`
+        );
+
+        // Execute copy trade asynchronously to avoid blocking the event handler
+        this.copyTradingEngine
+          .processCopyTrade(analysisResult.detectedTrade, this.config)
+          .then((result: CopyTradeResult) => {
+            console.log(
+              `[CopyTrading] Copy trade ${
+                result.success ? "successful" : "failed"
+              }:`,
+              result
+            );
+
+            // Forward copy trade result to callback
+            if (this.copyTradeCallback) {
+              this.copyTradeCallback(result);
+            }
+          })
+          .catch((error: any) => {
+            console.error(`[CopyTrading] Error executing copy trade:`, error);
+
+            // Create failed copy trade result
+            const failedResult: CopyTradeResult = {
+              success: false,
+              tradeType: analysisResult.detectedTrade!.type,
+              tokenMint: analysisResult.detectedTrade!.tokenMint,
+              tokenSymbol: analysisResult.detectedTrade!.tokenInfo.symbol,
+              amount: "0",
+              error: `Copy trade error: ${error.message}`,
+              timestamp: Date.now(),
+              originalTxSignature:
+                analysisResult.detectedTrade!.originalTxSignature,
+              monitoredWallet:
+                analysisResult.detectedTrade!.monitoredWallet.toBase58(),
+            };
+
+            if (this.copyTradeCallback) {
+              this.copyTradeCallback(failedResult);
+            }
+          });
+      }
+
       // Forward event to callback
       if (this.eventCallback) {
         this.eventCallback(event);
@@ -238,13 +293,23 @@ export class WalletMonitor {
   }
 
   /**
+   * Sets the callback function for copy trade results
+   * @param callback - Function to call when copy trades are executed
+   */
+  setCopyTradeCallback(callback: (result: CopyTradeResult) => void): void {
+    this.copyTradeCallback = callback;
+  }
+
+  /**
    * Starts monitoring wallets with the provided configuration
    * @param rpcUrl - Solana RPC endpoint URL
    * @param walletAddressesString - Comma-separated wallet addresses
+   * @param config - Optional configuration for copy trading
    */
   async startMonitoring(
     rpcUrl: string,
-    walletAddressesString: string
+    walletAddressesString: string,
+    config?: ConfigData
   ): Promise<void> {
     try {
       // Stop any existing monitoring
@@ -273,6 +338,13 @@ export class WalletMonitor {
 
       // Initialize transaction analyzer
       this.transactionAnalyzer = new TransactionAnalyzer(this.connection);
+
+      // Store config and initialize copy trading engine if provided
+      if (config) {
+        this.config = config;
+        this.copyTradingEngine = new CopyTradingEngine(this.connection);
+        console.log("Copy trading engine initialized");
+      }
 
       // Subscribe to each wallet
       this.monitoredWallets = walletAddresses;
@@ -329,6 +401,8 @@ export class WalletMonitor {
       this.monitoredWallets = [];
       this.connection = null;
       this.transactionAnalyzer = null;
+      this.copyTradingEngine = null;
+      this.config = null;
       this.isRunning = false;
 
       console.log("Wallet monitoring stopped");

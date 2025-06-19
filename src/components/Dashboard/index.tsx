@@ -30,6 +30,7 @@ import {
   WalletMonitoringError,
   WalletMonitoringStatus,
 } from "@/type/wallet";
+import { CopyTradeResult } from "@/type/jupiter";
 
 interface DashboardProps {}
 
@@ -43,6 +44,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
   const [monitoringStatus, setMonitoringStatus] =
     useState<WalletMonitoringStatus | null>(null);
   const [walletEvents, setWalletEvents] = useState<WalletLogEvent[]>([]);
+  const [copyTradeResults, setCopyTradeResults] = useState<CopyTradeResult[]>([]);
   const [isStartingMonitoring, setIsStartingMonitoring] =
     useState<boolean>(false);
   const [isStoppingMonitoring, setIsStoppingMonitoring] =
@@ -120,10 +122,33 @@ const Dashboard: React.FC<DashboardProps> = () => {
       }
     );
 
+    const removeCopyTradeListener = window.electronAPI.onCopyTradeResult(
+      (result: CopyTradeResult) => {
+        setCopyTradeResults((prev) => [result, ...prev.slice(0, 99)]); // Keep last 100 results
+        
+        if (result.success) {
+          notifications.show({
+            title: "Copy Trade Success",
+            message: `${result.tradeType.toUpperCase()} ${result.tokenSymbol}: ${result.amount}`,
+            color: "green",
+            autoClose: 4000,
+          });
+        } else {
+          notifications.show({
+            title: "Copy Trade Failed",
+            message: result.error || `Failed to ${result.tradeType} ${result.tokenSymbol}`,
+            color: "red",
+            autoClose: 5000,
+          });
+        }
+      }
+    );
+
     // Clean up listeners on unmount
     return () => {
       removeWalletEventListener();
       removeWalletErrorListener();
+      removeCopyTradeListener();
     };
   }, [checkConfigValidity]);
 
@@ -450,6 +475,88 @@ const Dashboard: React.FC<DashboardProps> = () => {
                 </Paper>
               </Grid.Col>
             </Grid>
+
+            {/* Copy Trading Results Section */}
+            {copyTradeResults.length > 0 && (
+              <Grid>
+                <Grid.Col span={12}>
+                  <Paper p="md" radius="md" shadow="sm">
+                    <Stack gap="md">
+                      <Flex justify="space-between" align="center">
+                        <Group>
+                          <IconActivity size={20} />
+                          <Title order={3}>Copy Trading Results</Title>
+                        </Group>
+                        <Badge
+                          color={copyTradeResults.filter(r => r.success).length > 0 ? "green" : "red"}
+                          variant="light"
+                        >
+                          {copyTradeResults.filter(r => r.success).length} / {copyTradeResults.length} successful
+                        </Badge>
+                      </Flex>
+
+                      <ScrollArea h={300}>
+                        <Stack gap="xs">
+                          {copyTradeResults.map((result, index) => (
+                            <Paper
+                              key={`${result.signature || result.timestamp}-${index}`}
+                              p="sm"
+                              radius="sm"
+                              bg={result.success ? "green.0" : "red.0"}
+                            >
+                              <Group justify="space-between" align="flex-start">
+                                <Stack gap={4} style={{ flex: 1 }}>
+                                  <Group gap="xs">
+                                    <Text size="sm" fw={500}>
+                                      {result.tradeType.toUpperCase()} {result.tokenSymbol}
+                                    </Text>
+                                    <Badge
+                                      size="xs"
+                                      color={result.success ? "green" : "red"}
+                                      variant="filled"
+                                    >
+                                      {result.success ? "SUCCESS" : "FAILED"}
+                                    </Badge>
+                                    <Badge
+                                      size="xs"
+                                      color={result.tradeType === "buy" ? "blue" : "orange"}
+                                      variant="light"
+                                    >
+                                      {result.tradeType.toUpperCase()}
+                                    </Badge>
+                                  </Group>
+                                  <Text size="xs" c="dimmed">
+                                    Amount: {result.amount} • 
+                                    Target: {result.monitoredWallet.slice(0, 8)}...
+                                  </Text>
+                                  {result.signature && (
+                                    <Text
+                                      size="xs"
+                                      c="dimmed"
+                                      style={{ fontFamily: "monospace" }}
+                                    >
+                                      Tx: {result.signature}
+                                    </Text>
+                                  )}
+                                  {result.error && (
+                                    <Text size="xs" c="red">
+                                      Error: {result.error}
+                                    </Text>
+                                  )}
+                                  <Text size="xs" c="dimmed">
+                                    {new Date(result.timestamp).toLocaleTimeString()}
+                                  </Text>
+                                </Stack>
+                              </Group>
+                            </Paper>
+                          ))}
+                        </Stack>
+                      </ScrollArea>
+                    </Stack>
+                  </Paper>
+                </Grid.Col>
+              </Grid>
+            )}
           </Stack>
         </Container>
       </AppShell.Main>
